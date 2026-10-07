@@ -11,16 +11,19 @@ import org.bukkit.persistence.PersistentDataType
 
 object PerkManager {
 
-    val perks: List<Perk> = listOf(SpeedPerk)
+    val perks: List<Perk> = listOf(SpeedPerk, ExplosionPerk, StrengthPerk, FreezePerk)
 
     fun perkKey(plugin: SulfurBall): NamespacedKey = NamespacedKey(plugin, "perk")
 
-    fun giveAll(plugin: SulfurBall, player: Player) {
-        perks.forEach { perk ->
-            player.inventory.setItem(perk.slot, perk.buildItem(plugin))
-            player.setCooldown(perk.material, perk.chargeTicks)
-            this.scheduleReadyNotice(plugin, player, perk)
+    fun giveSelectedOrRandom(plugin: SulfurBall, player: Player) {
+        val selectedId = plugin.database.getSelectedPerk(player.uniqueId)
+        val perk = perks.firstOrNull { it.id == selectedId } ?: perks.random()
+        if (selectedId == null) {
+            player.sendActionBar(Component.text("Perk aleatória: ${perk.displayName}", NamedTextColor.GREEN))
         }
+        player.inventory.setItem(perk.slot, perk.buildItem(plugin))
+        player.setCooldown(perk.material, perk.chargeTicks)
+        this.scheduleReadyNotice(plugin, player, perk)
     }
 
     fun isPerkItem(plugin: SulfurBall, item: ItemStack?): Boolean {
@@ -29,12 +32,23 @@ object PerkManager {
         return item.itemMeta.persistentDataContainer.has(perkKey(plugin), PersistentDataType.STRING)
     }
 
+    fun clearCooldowns(player: Player) {
+        perks.forEach { player.setCooldown(it.material, 0) }
+    }
+
     fun activate(plugin: SulfurBall, player: Player, item: ItemStack) {
         val perk = this.find(plugin, item) ?: return
+
+        if (plugin.matchEvents.isPreparing()) {
+            player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f)
+            player.sendActionBar(Component.text("Aguarde o reinício da partida.", NamedTextColor.YELLOW))
+            return
+        }
 
         val cooldown = player.getCooldown(perk.material)
         if (cooldown > 0) {
             val seconds = cooldown / 20 + 1
+            player.playSound(player.location, Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f)
             player.sendActionBar(
                 Component.text("${perk.displayName} recarregando: ${seconds}s", NamedTextColor.YELLOW)
             )
@@ -45,11 +59,14 @@ object PerkManager {
         perk.onActivate(plugin, player)
         player.setCooldown(perk.material, perk.chargeTicks)
 
-        Bukkit.getScheduler().runTaskLater(plugin, Runnable { perk.onExpire(plugin, player) }, perk.boostTicks.toLong())
+        Bukkit.getScheduler().runTaskLater(plugin, Runnable {
+            if (plugin.database.getTeam(player.uniqueId) == null) return@Runnable
+            perk.onExpire(plugin, player)
+        }, perk.boostTicks.toLong())
         this.scheduleReadyNotice(plugin, player, perk)
     }
 
-    private fun find(plugin: SulfurBall, item: ItemStack): Perk? {
+    fun find(plugin: SulfurBall, item: ItemStack): Perk? {
         if (!item.hasItemMeta()) return null
         val id = item.itemMeta.persistentDataContainer.get(perkKey(plugin), PersistentDataType.STRING) ?: return null
         return perks.firstOrNull { it.id == id }

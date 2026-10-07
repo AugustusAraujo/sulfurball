@@ -1,7 +1,5 @@
 package org.gustin.sulfurBall
 
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.event.EventHandler
 import org.bukkit.event.Listener
 import org.bukkit.event.block.Action
@@ -19,16 +17,6 @@ class HubItemListener(private val plugin: SulfurBall) : Listener {
         if (!HubItem.isHubItem(plugin, event.item)) return
 
         event.isCancelled = true
-
-        val hub = plugin.getSpawn("hub")
-        if (hub == null) {
-            event.player.sendMessage(
-                Component.text("Hub não configurado. Use /match setspawn hub.", NamedTextColor.RED)
-            )
-            return
-        }
-
-        event.player.teleport(hub)
-        event.player.sendMessage(Component.text("Teleportado para o hub.", NamedTextColor.GREEN))
+        HubItem.sendToHub(plugin, event.player)
     }
 }

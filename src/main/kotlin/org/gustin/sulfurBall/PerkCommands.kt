@@ -9,18 +9,25 @@ import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
 import org.bukkit.entity.Player
 
-class HubCommands(private val plugin: SulfurBall) {
+class PerkCommands(private val plugin: SulfurBall) {
 
     fun build(): LiteralCommandNode<CommandSourceStack> =
-        Commands.literal("hub")
-            .executes { hub(it) }
+        Commands.literal("perk")
+            .executes { perk(it) }
             .build()
 
-    private fun hub(ctx: CommandContext<CommandSourceStack>): Int {
+    private fun perk(ctx: CommandContext<CommandSourceStack>): Int {
         val player = ctx.source.sender as? Player ?: run {
             ctx.source.sender.sendMessage(Component.text("Only players can use this.", NamedTextColor.RED))
             return 0
         }
-        return if (HubItem.sendToHub(plugin, player)) Command.SINGLE_SUCCESS else 0
+
+        if (plugin.database.getTeam(player.uniqueId) != null) {
+            player.sendMessage(Component.text("Você não pode trocar de perk durante a partida.", NamedTextColor.RED))
+            return 0
+        }
+
+        PerkMenu(plugin, plugin.database.getSelectedPerk(player.uniqueId)).open(player)
+        return Command.SINGLE_SUCCESS
     }
 }

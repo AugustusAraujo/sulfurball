@@ -35,10 +35,12 @@ class SulfurBall : JavaPlugin() {
         server.pluginManager.registerEvents(JoinListener(this), this)
         server.pluginManager.registerEvents(ProtectionListener(this), this)
         server.pluginManager.registerEvents(PerkListener(this), this)
+        server.pluginManager.registerEvents(PerkMenuListener(this), this)
 
         lifecycleManager.registerEventHandler(LifecycleEvents.COMMANDS) { event ->
             event.registrar().register(MatchCommands(this, matchEvents).build(), "Manage the match")
-            event.registrar().register(HubCommands(this, matchEvents).build(), "Teleport to the hub")
+            event.registrar().register(HubCommands(this).build(), "Teleport to the hub")
+            event.registrar().register(PerkCommands(this).build(), "Escolher perk")
         }
 
         val world = Bukkit.getWorld("world")

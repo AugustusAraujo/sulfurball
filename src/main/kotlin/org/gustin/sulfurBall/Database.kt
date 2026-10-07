@@ -40,6 +40,14 @@ class Database(plugin: JavaPlugin) {
                 )
                 """.trimIndent()
             )
+            st.executeUpdate(
+                """
+                CREATE TABLE IF NOT EXISTS player_perk (
+                    uuid TEXT PRIMARY KEY,
+                    perk  TEXT NOT NULL
+                )
+                """.trimIndent()
+            )
         }
     }
 
@@ -148,6 +156,30 @@ class Database(plugin: JavaPlugin) {
     @Synchronized
     fun clearScores() {
         connection.createStatement().use { it.executeUpdate("DELETE FROM team_score") }
+    }
+
+    @Synchronized
+    fun setSelectedPerk(uuid: UUID, perk: String) {
+        connection.prepareStatement(
+            """
+            INSERT INTO player_perk (uuid, perk) VALUES (?, ?)
+            ON CONFLICT(uuid) DO UPDATE SET perk = excluded.perk
+            """.trimIndent()
+        ).use { stmt ->
+            stmt.setString(1, uuid.toString())
+            stmt.setString(2, perk)
+            stmt.executeUpdate()
+        }
+    }
+
+    @Synchronized
+    fun getSelectedPerk(uuid: UUID): String? {
+        connection.prepareStatement("SELECT perk FROM player_perk WHERE uuid = ?").use { stmt ->
+            stmt.setString(1, uuid.toString())
+            stmt.executeQuery().use { rs ->
+                return if (rs.next()) rs.getString("perk") else null
+            }
+        }
     }
 
     @Synchronized

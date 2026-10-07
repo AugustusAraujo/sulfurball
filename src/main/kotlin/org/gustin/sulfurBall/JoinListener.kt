@@ -11,11 +11,14 @@ class JoinListener(private val plugin: SulfurBall) : Listener {
         val player = event.player
         if (plugin.database.getTeam(player.uniqueId) != null) return
 
+        plugin.matchEvents.clearTeamColor(player)
+        PerkManager.clearCooldowns(player)
         player.inventory.clear()
         plugin.getSpawn("hub")?.let { player.teleport(it) }
 
         if (plugin.database.getLobbyPlayers().contains(player.uniqueId)) {
             HubItem.give(plugin, player)
+            PerkSelector.give(plugin, player)
         }
     }
 }

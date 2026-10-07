@@ -19,6 +19,7 @@ class ProtectionListener(private val plugin: SulfurBall) : Listener {
         if (item == null || item.type.isAir) return false
         if (HubItem.isHubItem(plugin, item)) return true
         if (PerkManager.isPerkItem(plugin, item)) return true
+        if (PerkSelector.isSelectorItem(plugin, item)) return true
         if (!item.hasItemMeta()) return false
         return item.itemMeta.persistentDataContainer.has(armorKey, PersistentDataType.BOOLEAN)
     }

@@ -2,6 +2,7 @@ package org.gustin.sulfurBall
 
 import net.kyori.adventure.text.Component
 import net.kyori.adventure.text.format.NamedTextColor
+import org.bukkit.GameMode
 import org.bukkit.Material
 import org.bukkit.NamespacedKey
 import org.bukkit.entity.Player
@@ -36,5 +37,33 @@ object HubItem {
         if (isHubItem(plugin, player.inventory.itemInOffHand)) {
             player.inventory.setItemInOffHand(null)
         }
+    }
+
+    fun sendToHub(plugin: SulfurBall, player: Player): Boolean {
+        val hub = plugin.getSpawn("hub")
+        if (hub == null) {
+            player.sendMessage(Component.text("Hub não configurado. Use /match setspawn hub.", NamedTextColor.RED))
+            return false
+        }
+
+        if (plugin.database.getTeam(player.uniqueId) != null) {
+            plugin.database.removeFromTeam(player.uniqueId)
+            player.inventory.clear()
+            player.clearActivePotionEffects()
+            PerkManager.clearCooldowns(player)
+            plugin.matchEvents.hideScoreBar(player)
+            plugin.matchEvents.clearTeamColor(player)
+            player.gameMode = GameMode.ADVENTURE
+        }
+
+        plugin.database.removeLobbyPlayer(player.uniqueId)
+        removeFrom(plugin, player)
+        PerkSelector.removeFrom(plugin, player)
+
+        player.teleport(hub)
+        player.sendMessage(Component.text("Teleportado para o hub.", NamedTextColor.GREEN))
+
+        plugin.matchEvents.checkAutoEnd()
+        return true
     }
 }

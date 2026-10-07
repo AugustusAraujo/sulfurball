@@ -23,6 +23,7 @@ import org.bukkit.persistence.PersistentDataType
 import org.bukkit.potion.PotionEffect
 import org.bukkit.potion.PotionEffectType
 import org.bukkit.scheduler.BukkitTask
+import org.bukkit.scoreboard.Team as ScoreboardTeam
 import org.bukkit.util.Vector
 import java.time.Duration
 
@@ -142,7 +143,7 @@ class MatchEvents(private val plugin: SulfurBall) {
         this.startMatchClock()
     }
 
-    fun endMatch() {
+    fun endMatch(forcedWinner: Team? = null) {
         if (!plugin.matchRunning) return
 
         this.cancelFreeze()
@@ -153,15 +154,20 @@ class MatchEvents(private val plugin: SulfurBall) {
 
         val red = plugin.database.getScore(Team.RED.name)
         val blue = plugin.database.getScore(Team.BLUE.name)
-        val winnerColor = when {
-            red > blue -> NamedTextColor.RED
-            blue > red -> NamedTextColor.BLUE
-            else -> NamedTextColor.WHITE
+        val winner = forcedWinner ?: when {
+            red > blue -> Team.RED
+            blue > red -> Team.BLUE
+            else -> null
         }
-        val winnerMessage = when {
-            red > blue -> "RED venceu!"
-            blue > red -> "BLUE venceu!"
-            else -> "Empate!"
+        val winnerColor = when (winner) {
+            Team.RED -> NamedTextColor.RED
+            Team.BLUE -> NamedTextColor.BLUE
+            null -> NamedTextColor.WHITE
+        }
+        val winnerMessage = when (winner) {
+            Team.RED -> "RED venceu!"
+            Team.BLUE -> "BLUE venceu!"
+            null -> "Empate!"
         }
         val tempos = Title.Times.times(
             Duration.ofMillis(300),
@@ -178,14 +184,26 @@ class MatchEvents(private val plugin: SulfurBall) {
             lobby?.let { player.teleport(it) }
             player.inventory.clear()
             player.clearActivePotionEffects()
+            PerkManager.clearCooldowns(player)
+            this.clearTeamColor(player)
             player.sendMessage(Component.text("The match has ended.", NamedTextColor.YELLOW))
             HubItem.give(plugin, player)
+            PerkSelector.give(plugin, player)
         }
 
         plugin.database.clearTeams()
         plugin.database.clearScores()
         plugin.matchRunning = false
         Bukkit.getScheduler().runTaskLater(plugin, Runnable { this.tryStartLobbyCountdown() }, 20L * 5)
+    }
+
+    fun checkAutoEnd() {
+        if (!plugin.matchRunning) return
+        val emptyTeams = Team.entries.filter { t ->
+            plugin.database.getTeamPlayers(t.name).none { Bukkit.getPlayer(it) != null }
+        }
+        if (emptyTeams.isEmpty()) return
+        this.endMatch(Team.entries.firstOrNull { it !in emptyTeams })
     }
 
     private fun startMatchClock() {
@@ -195,6 +213,11 @@ class MatchEvents(private val plugin: SulfurBall) {
         val start = System.currentTimeMillis()
         matchTimerTask = Bukkit.getScheduler().runTaskLater(plugin, Runnable { this.endMatch() }, MATCH_DURATION_TICKS)
         clockTask = Bukkit.getScheduler().runTaskTimer(plugin, Runnable {
+            if (!plugin.matchRunning) {
+                this.stopMatchClock()
+                return@Runnable
+            }
+            this.checkAutoEnd()
             if (!plugin.matchRunning) {
                 this.stopMatchClock()
                 return@Runnable
@@ -292,6 +315,8 @@ class MatchEvents(private val plugin: SulfurBall) {
         countdownTask = null
     }
 
+    fun isPreparing(): Boolean = freezeTask != null || countdownTask != null
+
     private fun onlineMatchPlayers(): List<Player> =
         Team.entries
             .flatMap { plugin.database.getTeamPlayers(it.name) }
@@ -303,6 +328,25 @@ class MatchEvents(private val plugin: SulfurBall) {
 
     fun hideScoreBar(player: Player) {
         player.hideBossBar(scoreBar)
+    }
+
+    private fun scoreboardTeam(team: Team): ScoreboardTeam {
+        val board = Bukkit.getScoreboardManager().mainScoreboard
+        val name = "sb_" + team.name.lowercase()
+        return board.getTeam(name) ?: board.registerNewTeam(name).apply {
+            color(if (team == Team.RED) NamedTextColor.RED else NamedTextColor.BLUE)
+        }
+    }
+
+    fun applyTeamColor(player: Player, team: Team) {
+        this.scoreboardTeam(team).addEntry(player.name)
+    }
+
+    fun clearTeamColor(player: Player) {
+        val board = Bukkit.getScoreboardManager().mainScoreboard
+        Team.entries.forEach { t ->
+            board.getTeam("sb_" + t.name.lowercase())?.removeEntry(player.name)
+        }
     }
 
     private fun scoreBarName(): Component {
@@ -378,7 +422,8 @@ class MatchEvents(private val plugin: SulfurBall) {
         this.setLookDirection(player, team)
         this.equipTeamArmor(player, team)
         this.applyPlayerEffects(player)
-        PerkManager.giveAll(plugin, player)
+        PerkManager.giveSelectedOrRandom(plugin, player)
+        this.applyTeamColor(player, team)
         scoreBar.name(scoreBarName())
         player.showBossBar(scoreBar)
     }
@@ -405,19 +450,30 @@ class MatchEvents(private val plugin: SulfurBall) {
     private fun teamColor(team: Team): Color =
         if (team == Team.RED) Color.RED else Color.BLUE
 
+    private fun teamHelmet(team: Team): ItemStack {
+        val helmet = ItemStack(Material.LEATHER_HELMET)
+        helmet.editMeta(LeatherArmorMeta::class.java) { meta ->
+            meta.setColor(teamColor(team))
+            meta.persistentDataContainer.set(NamespacedKey(plugin, "match_armor"), PersistentDataType.BOOLEAN, true)
+        }
+        return helmet
+    }
+
+    fun restoreHelmet(player: Player) {
+        val teamName = plugin.database.getTeam(player.uniqueId) ?: return
+        val team = Team.entries.first { it.name == teamName }
+        player.inventory.setHelmet(this.teamHelmet(team))
+    }
+
     private fun equipTeamArmor(player: Player, team: Team) {
         // 1. Create the items
-        val helmet = ItemStack(Material.LEATHER_HELMET)
+        val helmet = this.teamHelmet(team)
         val chestplate = ItemStack(Material.LEATHER_CHESTPLATE)
         val leggings = ItemStack(Material.LEATHER_LEGGINGS)
         val boots = ItemStack(Material.LEATHER_BOOTS)
 
         val color = teamColor(team)
         val armorKey = NamespacedKey(plugin, "match_armor")
-        helmet.editMeta(LeatherArmorMeta::class.java) { meta ->
-            meta.setColor(color)
-            meta.persistentDataContainer.set(armorKey, PersistentDataType.BOOLEAN, true)
-        }
         chestplate.editMeta(LeatherArmorMeta::class.java) { meta ->
             meta.setColor(color)
             meta.persistentDataContainer.set(armorKey, PersistentDataType.BOOLEAN, true)

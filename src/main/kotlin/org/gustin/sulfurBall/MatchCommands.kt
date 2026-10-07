@@ -57,6 +57,7 @@ class MatchCommands(private val plugin: SulfurBall, private val matchEvents: Mat
         db.addLobbyPlayer(player.uniqueId)
         plugin.getSpawn("lobby")?.let { player.teleport(it) }
         HubItem.give(plugin, player)
+        PerkSelector.give(plugin, player)
         player.sendMessage(Component.text("You joined the lobby.", NamedTextColor.GREEN))
         matchEvents.tryStartLobbyCountdown()
         return Command.SINGLE_SUCCESS
@@ -65,8 +66,14 @@ class MatchCommands(private val plugin: SulfurBall, private val matchEvents: Mat
     private fun leave(ctx: CommandContext<CommandSourceStack>): Int {
         val player = ctx.source.sender as? Player ?: return playersOnly(ctx)
 
+        if (db.getTeam(player.uniqueId) != null) {
+            return error(ctx, "You are in a match. Use /hub to leave.")
+        }
+
         db.removeLobbyPlayer(player.uniqueId)
         HubItem.removeFrom(plugin, player)
+        PerkSelector.removeFrom(plugin, player)
+        PerkManager.clearCooldowns(player)
         player.sendMessage(Component.text("You left the lobby.", NamedTextColor.YELLOW))
         return Command.SINGLE_SUCCESS
     }
