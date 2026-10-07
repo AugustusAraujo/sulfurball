@@ -1,0 +1,16 @@
+# Gradle
+.gradle/
+build/
+
+# Kotlin
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+
+# Servidor de dev (run-paper)
+run/
+
+# OS
+.DS_Store

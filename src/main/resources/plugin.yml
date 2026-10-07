@@ -1,0 +1,6 @@
+name: SulfurBall
+version: '${version}'
+
+main: org.gustin.sulfurBall.SulfurBall
+api-version: '26.2'
+load: POSTWORLD
